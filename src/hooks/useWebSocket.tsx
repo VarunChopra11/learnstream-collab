@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createWebSocketConnection, parseSocketMessage, sendSocketMessage, SocketMessage } from '@/lib/socket';
+import { toast } from 'sonner';
 
 type UseWebSocketOptions = {
   url: string;
@@ -28,24 +29,37 @@ export function useWebSocket({
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   // Connect to WebSocket
   const connect = useCallback(() => {
+    // Clear any existing connection first
+    if (socketRef.current) {
+      socketRef.current.close();
+      socketRef.current = null;
+    }
+
     try {
+      setIsReconnecting(reconnectAttemptsRef.current > 0);
       const socket = createWebSocketConnection(url);
       socketRef.current = socket;
 
       socket.onopen = () => {
         console.log('WebSocket connection opened');
         setIsConnected(true);
+        setIsReconnecting(false);
         reconnectAttemptsRef.current = 0;
         onOpen?.();
       };
 
       socket.onmessage = (event) => {
-        const message = parseSocketMessage(event.data);
-        setMessageHistory((prev) => [...prev, message]);
-        onMessage?.(message);
+        try {
+          const message = parseSocketMessage(event.data);
+          setMessageHistory((prev) => [...prev, message]);
+          onMessage?.(message);
+        } catch (err) {
+          console.error('Error handling message:', err);
+        }
       };
 
       socket.onclose = (event) => {
@@ -54,10 +68,20 @@ export function useWebSocket({
         onClose?.();
 
         if (autoReconnect && reconnectAttemptsRef.current < maxReconnectAttempts) {
+          console.log(`Attempting to reconnect (${reconnectAttemptsRef.current + 1}/${maxReconnectAttempts})`);
+          
+          // Clear any existing reconnect timeout
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+          }
+          
           reconnectTimeoutRef.current = window.setTimeout(() => {
             reconnectAttemptsRef.current += 1;
             connect();
           }, reconnectInterval);
+        } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+          setIsReconnecting(false);
+          toast.error(`Failed to connect after ${maxReconnectAttempts} attempts`);
         }
       };
 
@@ -67,6 +91,7 @@ export function useWebSocket({
       };
     } catch (err) {
       console.error('Failed to connect to WebSocket:', err);
+      setIsReconnecting(false);
     }
   }, [url, onMessage, onOpen, onClose, onError, autoReconnect, reconnectInterval, maxReconnectAttempts]);
 
@@ -81,16 +106,22 @@ export function useWebSocket({
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
+    
+    setIsConnected(false);
+    setIsReconnecting(false);
+    reconnectAttemptsRef.current = 0;
   }, []);
 
   // Send a message through the WebSocket
   const send = useCallback((type: string, payload: any) => {
     if (socketRef.current) {
       sendSocketMessage(socketRef.current, type, payload);
+      return true;
     }
+    return false;
   }, []);
 
-  // Clean up on unmount
+  // Connect on mount, disconnect on unmount
   useEffect(() => {
     connect();
     return () => disconnect();
@@ -102,5 +133,6 @@ export function useWebSocket({
     send,
     connect,
     disconnect,
+    isReconnecting,
   };
 }

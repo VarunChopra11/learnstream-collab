@@ -4,6 +4,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { WEBSOCKET_URL } from '@/lib/socket';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { AlertCircle } from 'lucide-react';
 
 interface CanvasProps {
   isTeacher?: boolean;
@@ -25,16 +26,22 @@ export const Canvas = ({ isTeacher = false, roomId }: CanvasProps) => {
   const [color, setColor] = useState('#000000');
   const [size, setSize] = useState(3);
   
-  const { isConnected, send, messageHistory } = useWebSocket({
-    url: `${WEBSOCKET_URL}?room=${roomId}`,
+  const { isConnected, send, isReconnecting } = useWebSocket({
+    url: `${WEBSOCKET_URL}?room=${roomId}-whiteboard`,
     onOpen: () => {
       toast.success('Connected to whiteboard session!');
     },
     onMessage: (message) => {
       if (message.type === 'draw_operation' && !isTeacher) {
         handleRemoteDrawOperation(message.payload);
+      } else if (message.type === 'clear_canvas') {
+        clearCanvas();
       }
     },
+    onError: (error) => {
+      console.error('WebSocket error in Canvas:', error);
+    },
+    maxReconnectAttempts: 3,
   });
 
   // Initial canvas setup
@@ -92,6 +99,14 @@ export const Canvas = ({ isTeacher = false, roomId }: CanvasProps) => {
     const context = contextRef.current;
     if (!context) return;
 
+    // Save current context state
+    const currentColor = context.strokeStyle;
+    const currentSize = context.lineWidth;
+    
+    // Apply remote operation styles
+    context.strokeStyle = operation.color;
+    context.lineWidth = operation.size;
+
     switch (operation.type) {
       case 'start':
         context.beginPath();
@@ -105,10 +120,14 @@ export const Canvas = ({ isTeacher = false, roomId }: CanvasProps) => {
         context.closePath();
         break;
     }
+    
+    // Restore original styles
+    context.strokeStyle = currentColor;
+    context.lineWidth = currentSize;
   };
 
   const startDrawing = ({ nativeEvent }: React.MouseEvent | React.TouchEvent) => {
-    if (!isTeacher || !contextRef.current) return;
+    if (!isTeacher || !contextRef.current || !isConnected) return;
     
     const { offsetX, offsetY } = nativeEvent instanceof MouseEvent 
       ? nativeEvent 
@@ -132,7 +151,7 @@ export const Canvas = ({ isTeacher = false, roomId }: CanvasProps) => {
   };
 
   const draw = ({ nativeEvent }: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing || !isTeacher || !contextRef.current) return;
+    if (!isDrawing || !isTeacher || !contextRef.current || !isConnected) return;
     
     const { offsetX, offsetY } = nativeEvent instanceof MouseEvent 
       ? nativeEvent 
@@ -155,7 +174,7 @@ export const Canvas = ({ isTeacher = false, roomId }: CanvasProps) => {
   };
 
   const endDrawing = () => {
-    if (!isTeacher || !contextRef.current) return;
+    if (!isTeacher || !contextRef.current || !isConnected) return;
     
     contextRef.current.closePath();
     setIsDrawing(false);
@@ -180,8 +199,10 @@ export const Canvas = ({ isTeacher = false, roomId }: CanvasProps) => {
       canvasRef.current.height / window.devicePixelRatio
     );
     
-    // Send clear operation to WebSocket server
-    send('clear_canvas', {});
+    // If teacher initiated the clear, send clear operation to WebSocket server
+    if (isTeacher && isConnected) {
+      send('clear_canvas', {});
+    }
   };
 
   return (
@@ -207,8 +228,17 @@ export const Canvas = ({ isTeacher = false, roomId }: CanvasProps) => {
         {!isConnected && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
             <div className="text-center">
-              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-              <p className="text-muted-foreground">Connecting to whiteboard session...</p>
+              {isReconnecting ? (
+                <>
+                  <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                  <p className="text-muted-foreground">Reconnecting to whiteboard session...</p>
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="h-8 w-8 text-amber-500 mx-auto mb-4" />
+                  <p className="text-muted-foreground">Connection failed. Please refresh the page.</p>
+                </>
+              )}
             </div>
           </div>
         )}

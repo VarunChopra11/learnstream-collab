@@ -23,7 +23,14 @@ export function createWebSocketConnection(url: string): WebSocket {
 // Parse incoming WebSocket messages
 export function parseSocketMessage(data: string): SocketMessage {
   try {
-    return JSON.parse(data);
+    // First check if the message is JSON
+    if (data.trim().startsWith('{') || data.trim().startsWith('[')) {
+      return JSON.parse(data);
+    } else {
+      // Handle non-JSON messages - just echo them back as text messages
+      console.log('Received non-JSON message:', data);
+      return { type: 'text', payload: data };
+    }
   } catch (error) {
     console.error('Error parsing socket message:', error);
     return { type: 'error', payload: null };
@@ -40,6 +47,7 @@ export function sendSocketMessage(socket: WebSocket, type: string, payload: any)
   }
 }
 
-// For demo purposes, we'll use a mock WebSocket server
-// In a real application, replace this with your actual WebSocket server URL
-export const WEBSOCKET_URL = 'wss://echo.websocket.events';
+// Replace echo.websocket.events with a more stable WebSocket service
+// Using a free signaling server for WebRTC and WebSocket communication
+export const WEBSOCKET_URL = 'wss://socketsbay.com/wss/v2/1/demo/';
+
