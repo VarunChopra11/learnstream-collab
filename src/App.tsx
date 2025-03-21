@@ -10,28 +10,32 @@ import Whiteboard from "./pages/Whiteboard";
 import VideoLecture from "./pages/VideoLecture";
 import Quiz from "./pages/Quiz";
 import NotFound from "./pages/NotFound";
+import React from 'react'; // Add explicit React import
 
+// Create the query client outside of the component
 const queryClient = new QueryClient();
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
+  <React.StrictMode>
+    <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AnimatePresence mode="wait">
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/whiteboard" element={<Whiteboard />} />
-            <Route path="/lectures" element={<VideoLecture />} />
-            <Route path="/quizzes" element={<Quiz />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AnimatePresence>
+        <TooltipProvider>
+          <AnimatePresence mode="wait">
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/whiteboard" element={<Whiteboard />} />
+              <Route path="/lectures" element={<VideoLecture />} />
+              <Route path="/quizzes" element={<Quiz />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AnimatePresence>
+          <Toaster />
+          <Sonner />
+        </TooltipProvider>
       </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+    </QueryClientProvider>
+  </React.StrictMode>
 );
 
 export default App;
